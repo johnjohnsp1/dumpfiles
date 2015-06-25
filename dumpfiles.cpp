@@ -5,23 +5,10 @@
 
 #include <cstdlib>
 #include <cstdio>
-
 #include <SDKDDKVer.h>
-
-#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
-// Windows Header Files:
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <string>
-
-// Fix the incompatibility between Windows sal.h and g++ compiler.
-/*#define _Field_size_opt_(x)
-#define _Out_writes_bytes_to_(x, y)
-#define _In_reads_bytes_(x)
-#define _Out_writes_bytes_(x)
-#define _Inout_
-#define _Out_writes_to_opt_(x, y)
-#define _Out_writes_to_(x, y)*/
-
 #define KDEXT_64BIT
 #include <wdbgexts.h>
 #include <Shlwapi.h>
@@ -70,6 +57,8 @@ WINDBG_EXTENSION_APIS ExtensionApis;
 ULONG SavedMajorVersion;
 ULONG SavedMinorVersion;
 
+BOOL myInit();
+
 extern "C"
 VOID
 __declspec(dllexport)
@@ -83,6 +72,7 @@ USHORT MinorVersion
 	SavedMajorVersion = MajorVersion;
 	SavedMinorVersion = MinorVersion;
 
+	myInit();
 	return;
 }
 
@@ -113,11 +103,137 @@ VOID
 	return;
 }
 
+/*
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ */
 
+#define DEBUG 0
 
-DECLARE_API(help)
+#if DEBUG
+#define ddprintf(fmt, ...) dprintf(fmt, __VA_ARGS__)
+#else
+#define ddprintf(fmt, ...)
+#endif
+
+ULONG g_NextSubsectionOffset;
+ULONG g_PtesInSubsectionOffset;
+ULONG g_SubsectionBaseOffset;
+ULONG g_StartingSectorOffset;
+ULONG g_SectionObjectPointerOffset;
+ULONG g_FileNameOffset;
+ULONG g_DataSectionObjectOffset;
+ULONG g_ImageSectionObjectOffset;
+ULONG g_SubsectionOffset;
+ULONG g_NumberOfPfnReferencesOffset;
+ULONG g_SegmentOffset;
+ULONG g_SharedCacheMapOffset;
+ULONG g_InitialVacbsOffset[4];
+
+BOOL myInit(){
+	int rc = GetFieldOffset("_FILE_OBJECT", "SectionObjectPointer", &g_SectionObjectPointerOffset);
+	ddprintf("SectionObjectPointerOffset %d %p\n", rc, g_SectionObjectPointerOffset);
+	if (rc != 0){
+		dprintf("Failed to get SectionObjectPointerOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_FILE_OBJECT", "FileName", &g_FileNameOffset);
+	ddprintf("FileNameOffset %d %p\n", rc, g_FileNameOffset);
+	if (rc != 0){
+		dprintf("Failed to get FileNameOffset");
+		return FALSE;
+	}
+	
+	rc = GetFieldOffset("_SECTION_OBJECT_POINTERS", "DataSectionObject", &g_DataSectionObjectOffset);
+	ddprintf("DataSectionObjectOffset %d %p\n", rc, g_DataSectionObjectOffset);
+	if (rc != 0){
+		dprintf("Failed to get DataSectionObjectOffset");
+		return FALSE;
+	}
+	
+	rc = GetFieldOffset("_SECTION_OBJECT_POINTERS", "ImageSectionObject", &g_ImageSectionObjectOffset);
+	ddprintf("ImageSectionObjectOffset %d %p\n", rc, g_ImageSectionObjectOffset);
+	if (rc != 0){
+		dprintf("Failed to get ImageSectionObjectOffset");
+		return FALSE;
+	}
+	
+	g_SubsectionOffset = GetTypeSize("nt!_CONTROL_AREA");
+	ddprintf("SubsectionOffset %p\n", g_SubsectionOffset);
+	if (rc != 0){
+		dprintf("Failed to get SubsectionOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_SUBSECTION", "SubsectionBase", &g_SubsectionBaseOffset);
+	ddprintf("SubsectionBaseOffset %d %p\n", rc, g_SubsectionBaseOffset);
+	if (rc != 0){
+		dprintf("Failed to get SubsectionBaseOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_CONTROL_AREA", "NumberOfPfnReferences", &g_NumberOfPfnReferencesOffset);
+	ddprintf("NumberOfPfnReferencesOffset %d %p\n", rc, g_NumberOfPfnReferencesOffset);
+	if (rc != 0){
+		dprintf("Failed to get NumberOfPfnReferencesOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_CONTROL_AREA", "Segment", &g_SegmentOffset);
+	ddprintf("SegmentOffset %d %p\n", rc, g_SegmentOffset);
+	if (rc != 0){
+		dprintf("Failed to get SegmentOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_SUBSECTION", "PtesInSubsection", &g_PtesInSubsectionOffset);
+	ddprintf("PtesInSubsectionOffset %d %p\n", rc, g_PtesInSubsectionOffset);
+	if (rc != 0){
+		dprintf("Failed to get PtesInSubsectionOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_SUBSECTION", "NextSubsection", &g_NextSubsectionOffset);
+	ddprintf("NextSubsectionOffset %d %p\n", rc, g_NextSubsectionOffset);
+	if (rc != 0){
+		dprintf("Failed to get NextSubsectionOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_SUBSECTION", "StartingSector", &g_StartingSectorOffset);
+	ddprintf("StartingSectorOffset %d %p\n", rc, g_StartingSectorOffset);
+	if (rc != 0){
+		dprintf("Failed to get StartingSectorOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_SECTION_OBJECT_POINTERS", "SharedCacheMap", &g_SharedCacheMapOffset);
+	ddprintf("SharedCacheMapOffset %d %p\n", rc, g_SharedCacheMapOffset);
+	if (rc != 0){
+		dprintf("Failed to get SharedCacheMapOffset");
+		return FALSE;
+	}
+
+	rc = GetFieldOffset("_SHARED_CACHE_MAP", "InitialVacbs[0]", &g_InitialVacbsOffset[0]);
+	rc = GetFieldOffset("_SHARED_CACHE_MAP", "InitialVacbs[1]", &g_InitialVacbsOffset[1]);
+	rc = GetFieldOffset("_SHARED_CACHE_MAP", "InitialVacbs[2]", &g_InitialVacbsOffset[2]);
+	rc = GetFieldOffset("_SHARED_CACHE_MAP", "InitialVacbs[3]", &g_InitialVacbsOffset[3]);
+	ddprintf("InitialVacbsOffset[3] %d %p\n", rc, g_InitialVacbsOffset[3]);
+	if (rc != 0){
+		dprintf("Failed to get InitialVacbsOffset[3]");
+		return FALSE;
+	}
+}
+
+DECLARE_API(dumpfileshelp)
 {
-	dprintf("PIMP MY HELP\n");
+	dprintf("!dumpfiles.dump fileobj");
 }
 
 BOOL DirectoryExists(LPCWSTR szPath){
@@ -147,32 +263,31 @@ BOOL DirectoryCreate(wchar_t *path){
 	return TRUE;
 }
 
-ULONG NextSubsectionOffset;
-ULONG PtesInSubsectionOffset;
-ULONG SubsectionBaseOffset;
-ULONG StartingSectorOffset;
+
+
+
 
 bool dumpSubSection(HANDLE hOutputFile, ULONG_PTR Subsection){
 	while (Subsection > 0){
-		dprintf("Subsection %p\n", Subsection);
+		ddprintf("Subsection %p\n", Subsection);
 
 		UINT32 PtesInSubsection;
-		int rc = ReadMemory(Subsection + PtesInSubsectionOffset, &PtesInSubsection, sizeof(PtesInSubsection), NULL);
-		dprintf("PtesInSubsection %d %p\n", rc, PtesInSubsection);
+		int rc = ReadMemory(Subsection + g_PtesInSubsectionOffset, &PtesInSubsection, sizeof(PtesInSubsection), NULL);
+		ddprintf("PtesInSubsection %d %p\n", rc, PtesInSubsection);
 		if (rc != 1){
 			return false;
 		}
 
 		UINT32 StartingSector;
-		rc = ReadMemory(Subsection + StartingSectorOffset, &StartingSector, sizeof(StartingSector), NULL);
-		dprintf("StartingSector %d %p\n", rc, StartingSector);
+		rc = ReadMemory(Subsection + g_StartingSectorOffset, &StartingSector, sizeof(StartingSector), NULL);
+		ddprintf("StartingSector %d %p\n", rc, StartingSector);
 		if (rc != 1){
 			return false;
 		}
 
 		ULONG_PTR SubsectionBase;
-		rc = ReadPointer(Subsection + SubsectionBaseOffset, &SubsectionBase);
-		dprintf("SubsectionBase %d %p\n", rc, SubsectionBase);
+		rc = ReadPointer(Subsection + g_SubsectionBaseOffset, &SubsectionBase);
+		ddprintf("SubsectionBase %d %p\n", rc, SubsectionBase);
 		if (rc != 1){
 			return false;
 		}
@@ -187,15 +302,16 @@ bool dumpSubSection(HANDLE hOutputFile, ULONG_PTR Subsection){
 			if (PhysicalAddress & 0x1){ //Is valid
 				//TODO : function dumpPhysicalBlaBla...
 				PhysicalAddress = PhysicalAddress & 0x00007FFFFFFFF000;
-				dprintf("\t==> PhysicalAddress[%d] %d %p\n", i, rc, PhysicalAddress);
+				ddprintf("\t==> PhysicalAddress[%d] %d %p\n", i, rc, PhysicalAddress);
 				char tmpBuffer[4096];
 				ULONG readBytes;
 				ReadPhysical(PhysicalAddress, tmpBuffer, sizeof(tmpBuffer), &readBytes);
 				if (readBytes == sizeof(tmpBuffer)){
-					SetFilePointer(hOutputFile, (StartingSector * 0x200) + (i * 0x1000/*TODO: PAGE_SIZE*/), NULL, FILE_BEGIN);
+					LONG inFileOffset = (StartingSector * 0x200) + (i * 0x1000/*TODO: PAGE_SIZE*/);
+					SetFilePointer(hOutputFile, inFileOffset, NULL, FILE_BEGIN);
 					ULONG writtenBytes;
 					WriteFile(hOutputFile, tmpBuffer, sizeof(tmpBuffer), &writtenBytes, NULL);
-					dprintf("Write done %d!\n", writtenBytes);
+					dprintf("%d bytes written @%p!\n", writtenBytes, inFileOffset);
 				}
 				else{
 					dprintf("Failed to read physical memory at %p\n", PhysicalAddress);
@@ -203,15 +319,16 @@ bool dumpSubSection(HANDLE hOutputFile, ULONG_PTR Subsection){
 			}else{
 				if (PhysicalAddress & 0x800){ //In transition
 					PhysicalAddress = PhysicalAddress & 0x00007FFFFFFFF000;
-					dprintf("\t==> PhysicalAddress[%d] %d %p\n", i, rc, PhysicalAddress);
+					ddprintf("\t==> PhysicalAddress[%d] %d %p\n", i, rc, PhysicalAddress);
 					char tmpBuffer[4096];
 					ULONG readBytes;
 					ReadPhysical(PhysicalAddress, tmpBuffer, sizeof(tmpBuffer), &readBytes);
 					if (readBytes == sizeof(tmpBuffer)){
-						SetFilePointer(hOutputFile, (StartingSector * 0x200) + (i * 0x1000/*TODO: PAGE_SIZE*/), NULL, FILE_BEGIN);
+						LONG inFileOffset = (StartingSector * 0x200) + (i * 0x1000/*TODO: PAGE_SIZE*/);
+						SetFilePointer(hOutputFile, inFileOffset, NULL, FILE_BEGIN);
 						ULONG writtenBytes;
 						WriteFile(hOutputFile, tmpBuffer, sizeof(tmpBuffer), &writtenBytes, NULL);
-						dprintf("Write done %d!\n", writtenBytes);
+						dprintf("%d bytes written @%p!\n", writtenBytes, inFileOffset);
 					}
 					else{
 						dprintf("Failed to read physical memory at %p\n", PhysicalAddress);
@@ -219,18 +336,20 @@ bool dumpSubSection(HANDLE hOutputFile, ULONG_PTR Subsection){
 				}
 			}
 		}
-		rc = ReadPointer(Subsection + NextSubsectionOffset, &Subsection);
+		rc = ReadPointer(Subsection + g_NextSubsectionOffset, &Subsection);
 		if (rc != 1){
 			return false;
 		}
 	}
 }
 
-DECLARE_API(dump)
+
+DECLARE_API(dumpfiles)
 {
 	ULONG_PTR FileObject = 0;
 	ULONG64 Value;
 	PCSTR Remainder;
+	int rc;
 
 	//ULONG Bytes;
 	ULONG Data = 0;
@@ -240,7 +359,7 @@ DECLARE_API(dump)
 	if (ret == TRUE && Value != 0) {
 		FileObject = Value;
 		if (FileObject == NULL){
-			dprintf("invalid...\n");
+			dprintf("Invalid FileObject\n");
 			goto Fail;
 		}
 	}
@@ -257,87 +376,10 @@ DECLARE_API(dump)
 
 	WCHAR fullPath[1024]; //TODO: malloc !
 	wcscpy_s(fullPath, outputDirectory);
-	//wcscat_s(fullPath, L"DUSDLSLHLMDHLKDH");
-
-	//return;
-	dprintf("File Object : %p \n", FileObject);
-
-	ULONG SectionObjectPointerOffset;
-	int rc = GetFieldOffset("_FILE_OBJECT", "SectionObjectPointer", &SectionObjectPointerOffset);
-	dprintf("SectionObjectPointerOffset %d %p\n", rc, SectionObjectPointerOffset);
-	if (rc != 0){
-		goto Fail;
-	}
-
-	ULONG FileNameOffset;
-	rc = GetFieldOffset("_FILE_OBJECT", "FileName", &FileNameOffset);
-	dprintf("FileNameOffset %d %p\n", rc, FileNameOffset);
-	if (rc != 0){
-		goto Fail;
-	}
-
-	ULONG DataSectionObjectOffset;
-	rc = GetFieldOffset("_SECTION_OBJECT_POINTERS", "DataSectionObject", &DataSectionObjectOffset);
-	dprintf("DataSectionObjectOffset %d %p\n", rc, DataSectionObjectOffset);
-	if (rc != 0){
-		goto Fail;
-	}
-
-	ULONG ImageSectionObjectOffset;
-	rc = GetFieldOffset("_SECTION_OBJECT_POINTERS", "ImageSectionObject", &ImageSectionObjectOffset);
-	dprintf("ImageSectionObjectOffset %d %p\n", rc, ImageSectionObjectOffset);
-	if (rc != 0){
-		goto Fail;
-	}
-
-	ULONG SubsectionOffset;
-	SubsectionOffset = GetTypeSize("nt!_CONTROL_AREA");
-	dprintf("SubsectionOffset %p\n", SubsectionOffset);
-	if (rc != 0){
-		goto Fail;
-	}
 
 
-	rc = GetFieldOffset("_SUBSECTION", "SubsectionBase", &SubsectionBaseOffset);
-	dprintf("SubsectionBaseOffset %d %p\n", rc, SubsectionBaseOffset);
-	if (rc != 0){
-		goto Fail;
-	}
+	ddprintf("File Object : %p \n", FileObject);
 
-	ULONG NumberOfPfnReferencesOffset;
-	rc = GetFieldOffset("_CONTROL_AREA", "NumberOfPfnReferences", &NumberOfPfnReferencesOffset);
-	dprintf("NumberOfPfnReferencesOffset %d %p\n", rc, NumberOfPfnReferencesOffset);
-	if (rc != 0){
-		goto Fail;
-	}
-
-	ULONG SegmentOffset;
-	rc = GetFieldOffset("_CONTROL_AREA", "Segment", &SegmentOffset);
-	dprintf("SegmentOffset %d %p\n", rc, SegmentOffset);
-	if (rc != 0){
-		goto Fail;
-	}
-
-
-
-	rc = GetFieldOffset("_SUBSECTION", "PtesInSubsection", &PtesInSubsectionOffset);
-	dprintf("PtesInSubsectionOffset %d %p\n", rc, PtesInSubsectionOffset);
-	if (rc != 0){
-		goto Fail;
-	}
-
-
-	rc = GetFieldOffset("_SUBSECTION", "NextSubsection", &NextSubsectionOffset);
-	dprintf("NextSubsectionOffset %d %p\n", rc, NextSubsectionOffset);
-	if (rc != 0){
-		goto Fail;
-	}
-
-	rc = GetFieldOffset("_SUBSECTION", "StartingSector", &StartingSectorOffset);
-	dprintf("StartingSectorOffset %d %p\n", rc, StartingSectorOffset);
-	if (rc != 0){
-		goto Fail;
-	}
 
 	//Start !
 
@@ -345,30 +387,30 @@ DECLARE_API(dump)
 
 	//Get FileName
 	UINT16 FileNameLength;
-	rc = ReadMemory(FileObject + FileNameOffset, &FileNameLength, sizeof(FileNameLength), NULL);
-	dprintf("FileNameLength %d %p\n", rc, FileNameLength);
+	rc = ReadMemory(FileObject + g_FileNameOffset, &FileNameLength, sizeof(FileNameLength), NULL);
+	ddprintf("FileNameLength %d %p\n", rc, FileNameLength);
 	if (rc != 1){
 		goto Fail;
 	}
 
 	ULONG_PTR FileNamePtr;
-	rc = ReadPointer(FileObject + FileNameOffset + 8 /*TODO*/, &FileNamePtr);
-	dprintf("FileNamePtr %d %p\n", rc, FileNamePtr);
-	if (rc != 1){
+	rc = ReadPointer(FileObject + g_FileNameOffset + 8 /*TODO*/, &FileNamePtr);
+	ddprintf("FileNamePtr %d %p\n", rc, FileNamePtr);
+	if (rc != 1 || FileNamePtr == NULL){
 		goto Fail;
 	}
 
 	WCHAR FileName[1024];
 	rc = ReadMemory(FileNamePtr, FileName, FileNameLength, NULL);
 	FileName[FileNameLength / 2] = 0;
-	dprintf("FileName %d %ws\n", rc, FileName);
+	ddprintf("FileName %d %ws\n", rc, FileName);
 	if (rc != 1){
 		goto Fail;
 	}
 
 	//Concat outputDirectory with FileName;
 	wcscat_s(fullPath, FileName);
-	dprintf("fullPath %ws\n", fullPath);
+	ddprintf("fullPath %ws\n", fullPath);
 
 	//Get Basepath
 	WCHAR fullBasePath[1024]; //TODO: malloc !
@@ -381,11 +423,11 @@ DECLARE_API(dump)
 	size_t fullBasePathLen = wcslen(fullBasePath);
 	fullBasePath[fullBasePathLen] = '\\';
 	fullBasePath[fullBasePathLen + 1] = '\0';
-	dprintf("fullBasePath %ws\n", fullBasePath);
+	ddprintf("fullBasePath %ws\n", fullBasePath);
 
 	//Create directory tree
 	if (DirectoryCreate(fullBasePath) == FALSE){
-		dprintf("Fail to create local directory base path !\n");
+		dprintf("Fail to create local directory base path %ws!\n", fullBasePath);
 		goto Fail;
 	}
 
@@ -399,7 +441,7 @@ DECLARE_API(dump)
 		NULL);
 
 	if (hOuputFile == INVALID_HANDLE_VALUE){
-		dprintf("Failed to create local file !\n");
+		dprintf("Failed to create local file %ws!\n", fullPath);
 		goto Fail;
 	}
 
@@ -407,124 +449,85 @@ DECLARE_API(dump)
 
 	//Get _SECTION
 	ULONG_PTR SectionObjectPointer;
-	rc = ReadPointer(FileObject + SectionObjectPointerOffset, &SectionObjectPointer);
-	dprintf("SectionObjectPointer %d %p\n", rc, SectionObjectPointer);
-	if (rc != 1){
+	rc = ReadPointer(FileObject + g_SectionObjectPointerOffset, &SectionObjectPointer);
+	ddprintf("SectionObjectPointer %d %p\n", rc, SectionObjectPointer);
+	if (rc != 1 || SectionObjectPointer == NULL){
 		goto Fail;
 	}
 
-
-	dprintf("#####################################\n");
+	dprintf("################DataSectionObject###############\n");
 	ULONG_PTR DataSectionObject;
-	rc = ReadPointer(SectionObjectPointer + DataSectionObjectOffset, &DataSectionObject);
-	dprintf("DataSectionObject %d %p\n", rc, DataSectionObject);
+	rc = ReadPointer(SectionObjectPointer + g_DataSectionObjectOffset, &DataSectionObject);
+	ddprintf("DataSectionObject %d %p\n", rc, DataSectionObject);
 	if (rc != 1){
 		goto Fail;
 	}
 
 	if (DataSectionObject > 0){
-		ULONG_PTR Subsection = DataSectionObject + SubsectionOffset;
+		ULONG_PTR Subsection = DataSectionObject + g_SubsectionOffset;
 		if (dumpSubSection(hOuputFile, Subsection) == false){
 			goto Fail;
 		}
 	}
+	else{
+		dprintf("Nothing to extract from DataSectionObject \n");
+	}
 
-	dprintf("#####################################\n");
+	dprintf("################ImageSectionObject###############\n");
 	ULONG_PTR ImageSectionObject;
-	rc = ReadPointer(SectionObjectPointer + ImageSectionObjectOffset, &ImageSectionObject);
-	dprintf("ImageSectionObject %d %p\n", rc, ImageSectionObject);
+	rc = ReadPointer(SectionObjectPointer + g_ImageSectionObjectOffset, &ImageSectionObject);
+	ddprintf("ImageSectionObject %d %p\n", rc, ImageSectionObject);
 	if (rc != 1){
 		goto Fail;
 	}
 
 	if (ImageSectionObject > 0){
-		ULONG_PTR Subsection = ImageSectionObject + SubsectionOffset;
+		ULONG_PTR Subsection = ImageSectionObject + g_SubsectionOffset;
 		if (dumpSubSection(hOuputFile, Subsection) == false){
 			goto Fail;
 		}
+	}else{
+		dprintf("Nothing to extract from ImageSectionObject \n");
 	}
 
-	dprintf("#####################################\n");
-	//TODO: _SHARED_CACHE_MAP !
-	//Get _SEGMENT
-	/*ULONG_PTR Segment;
-	rc = ReadPointer(DataSectionObject + SegmentOffset, &Segment);
-	dprintf("Segment %d %p\n", rc, Segment);
-	if (rc != 1){
-		goto Fail;
-	}*/
-
-	//Get SizeOfSegment
-	/*UINT64 SizeOfSegment;
-	rc = ReadMemory(Segment + 0x18 , &SizeOfSegment, sizeof(SizeOfSegment), NULL);
-	dprintf("SizeOfSegment %d %d\n", rc, SizeOfSegment);
-	if (rc != 1){
-		goto Fail;
-	}*/
-
-	/*UINT32 NumberOfPfnReferences;
-	rc = ReadMemory(DataSectionObject + NumberOfPfnReferencesOffset, &NumberOfPfnReferences, sizeof(NumberOfPfnReferences), NULL);
-	dprintf("NumberOfPfnReferences %d %p\n", rc, NumberOfPfnReferences);
-	if (rc != 1){
-		goto Fail;
-	}*/
-
-
-
+	dprintf("################SharedCacheMap###################\n");
 	//_SHARED_CACHE_MAP
-	/*ULONG SharedCacheMapOffset;
-	rc = GetFieldOffset("_SECTION_OBJECT_POINTERS", "SharedCacheMap", &SharedCacheMapOffset);
-	dprintf("%d %p\n", rc, SharedCacheMapOffset);
-	if (rc != 0){
-	return;
-	}
-
 	ULONG_PTR SharedCacheMap;
-	rc = ReadPointer(SectionObjectPointer + SharedCacheMapOffset, &SharedCacheMap);
-	dprintf("SharedCacheMap %d %p\n", rc, SharedCacheMap);
+	rc = ReadPointer(SectionObjectPointer + g_SharedCacheMapOffset, &SharedCacheMap);
+	ddprintf("SharedCacheMap %d %p\n", rc, SharedCacheMap);
 	if (rc != 1){
-	return;
+		return;
 	}
 
-	if(SharedCacheMap != NULL){
-	dprintf("Got it!\n");
-	ULONG InitialVacbsOffset[4];
-	rc = GetFieldOffset("_SHARED_CACHE_MAP", "InitialVacbs[0]", &InitialVacbsOffset[0]);
-	rc = GetFieldOffset("_SHARED_CACHE_MAP", "InitialVacbs[1]", &InitialVacbsOffset[1]);
-	rc = GetFieldOffset("_SHARED_CACHE_MAP", "InitialVacbs[2]", &InitialVacbsOffset[2]);
-	rc = GetFieldOffset("_SHARED_CACHE_MAP", "InitialVacbs[3]", &InitialVacbsOffset[3]);
-	dprintf("%d %p\n", rc, InitialVacbsOffset[3]);
-	if (rc != 0){
-	return;
-	}
+	if (SharedCacheMap != NULL){
+		ULONG_PTR InitialVacbs[4];
+		for (int i = 0; i<4; i++){
+			rc = ReadPointer(SharedCacheMap + g_InitialVacbsOffset[i], &InitialVacbs[i]);
+			ddprintf("InitialVacbs[%d] %d %p\n", i, rc, InitialVacbs[i]);
+			if (rc != 1){
+				return;
+			}
 
-	ULONG_PTR InitialVacbs[4];
-	for(int i=0; i<4; i++){
-	rc = ReadPointer(SharedCacheMap + InitialVacbsOffset[i], &InitialVacbs[i]);
-	dprintf("InitialVacbs[%d] %d %p\n", i, rc, InitialVacbs[i]);
-	if (rc != 1){
-	return;
+			if (InitialVacbs[i]){
+				ULONG_PTR BaseAddress;
+				rc = ReadPointer(InitialVacbs[i], &BaseAddress);
+				dprintf("\t==> BaseAddress %d %p\n", rc, BaseAddress);
+				if (rc != 1){
+					return;
+				}
+				//TODO: extract !
+			}
+		}
+	}else{
+		dprintf("Nothing to extract from SharedCacheMap \n");
 	}
-
-	if(InitialVacbs[i]){
-	ULONG_PTR BaseAddress;
-	rc = ReadPointer(InitialVacbs[i], &BaseAddress);
-	dprintf("\t==> BaseAddress %d %p\n", rc, BaseAddress);
-	if (rc != 1){
-	return;
-	}
-
-
-	}
-	}
-	}*/
 
 	//Truncate hOuputFile to SizeOfSegment
 	//SetFilePointer(hOuputFile, SizeOfSegment, NULL, FILE_BEGIN);
 	//SetEndOfFile(hOuputFile);
-
 Fail:
 	if (hOuputFile != NULL){
+		dprintf("File saved at %ws\n", fullPath);
 		CloseHandle(hOuputFile);
 	}
 }
