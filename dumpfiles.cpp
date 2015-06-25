@@ -57,7 +57,7 @@ WINDBG_EXTENSION_APIS ExtensionApis;
 ULONG SavedMajorVersion;
 ULONG SavedMinorVersion;
 
-BOOL myInit();
+BOOL extensionInit();
 
 extern "C"
 VOID
@@ -72,7 +72,7 @@ USHORT MinorVersion
 	SavedMajorVersion = MajorVersion;
 	SavedMinorVersion = MinorVersion;
 
-	myInit();
+	extensionInit();
 	return;
 }
 
@@ -135,7 +135,7 @@ ULONG g_SegmentOffset;
 ULONG g_SharedCacheMapOffset;
 ULONG g_InitialVacbsOffset[4];
 
-BOOL myInit(){
+BOOL extensionInit(){
 	int rc = GetFieldOffset("_FILE_OBJECT", "SectionObjectPointer", &g_SectionObjectPointerOffset);
 	ddprintf("SectionObjectPointerOffset %d %p\n", rc, g_SectionObjectPointerOffset);
 	if (rc != 0){
@@ -229,6 +229,7 @@ BOOL myInit(){
 		dprintf("Failed to get InitialVacbsOffset[3]");
 		return FALSE;
 	}
+	return TRUE;
 }
 
 DECLARE_API(dumpfileshelp)
@@ -341,6 +342,7 @@ bool dumpSubSection(HANDLE hOutputFile, ULONG_PTR Subsection){
 			return false;
 		}
 	}
+	return true;
 }
 
 
@@ -353,7 +355,7 @@ DECLARE_API(dumpfiles)
 
 	//ULONG Bytes;
 	ULONG Data = 0;
-	HANDLE hOuputFile = NULL;
+	HANDLE hOutputFile = NULL;
 
 	BOOL ret = GetExpressionEx(args, &Value, &Remainder);
 	if (ret == TRUE && Value != 0) {
@@ -432,7 +434,7 @@ DECLARE_API(dumpfiles)
 	}
 
 	//Creation of local file
-	hOuputFile = CreateFile(fullPath,
+	hOutputFile = CreateFile(fullPath,
 		GENERIC_WRITE,
 		0,
 		NULL,
@@ -440,7 +442,7 @@ DECLARE_API(dumpfiles)
 		FILE_ATTRIBUTE_NORMAL,
 		NULL);
 
-	if (hOuputFile == INVALID_HANDLE_VALUE){
+	if (hOutputFile == INVALID_HANDLE_VALUE){
 		dprintf("Failed to create local file %ws!\n", fullPath);
 		goto Fail;
 	}
@@ -465,7 +467,7 @@ DECLARE_API(dumpfiles)
 
 	if (DataSectionObject > 0){
 		ULONG_PTR Subsection = DataSectionObject + g_SubsectionOffset;
-		if (dumpSubSection(hOuputFile, Subsection) == false){
+		if (dumpSubSection(hOutputFile, Subsection) == false){
 			goto Fail;
 		}
 	}
@@ -483,7 +485,7 @@ DECLARE_API(dumpfiles)
 
 	if (ImageSectionObject > 0){
 		ULONG_PTR Subsection = ImageSectionObject + g_SubsectionOffset;
-		if (dumpSubSection(hOuputFile, Subsection) == false){
+		if (dumpSubSection(hOutputFile, Subsection) == false){
 			goto Fail;
 		}
 	}else{
@@ -496,7 +498,7 @@ DECLARE_API(dumpfiles)
 	rc = ReadPointer(SectionObjectPointer + g_SharedCacheMapOffset, &SharedCacheMap);
 	ddprintf("SharedCacheMap %d %p\n", rc, SharedCacheMap);
 	if (rc != 1){
-		return;
+		goto Fail;
 	}
 
 	if (SharedCacheMap != NULL){
@@ -505,29 +507,43 @@ DECLARE_API(dumpfiles)
 			rc = ReadPointer(SharedCacheMap + g_InitialVacbsOffset[i], &InitialVacbs[i]);
 			ddprintf("InitialVacbs[%d] %d %p\n", i, rc, InitialVacbs[i]);
 			if (rc != 1){
-				return;
+				goto Fail;
 			}
 
 			if (InitialVacbs[i]){
 				ULONG_PTR BaseAddress;
 				rc = ReadPointer(InitialVacbs[i], &BaseAddress);
-				dprintf("\t==> BaseAddress %d %p\n", rc, BaseAddress);
+				ddprintf("\t==> BaseAddress %d %p\n", rc, BaseAddress);
 				if (rc != 1){
-					return;
+					goto Fail;
 				}
-				//TODO: extract !
+				char tmpBuffer[256*1024];
+				ULONG readBytes;
+				ReadMemory(BaseAddress, tmpBuffer, sizeof(tmpBuffer), &readBytes);
+				if (readBytes == sizeof(tmpBuffer)){
+					LONG inFileOffset = i * 256 * 1024;
+					SetFilePointer(hOutputFile, inFileOffset, NULL, FILE_BEGIN);
+					ULONG writtenBytes;
+					WriteFile(hOutputFile, tmpBuffer, sizeof(tmpBuffer), &writtenBytes, NULL);
+					dprintf("%d bytes written @%p!\n", writtenBytes, inFileOffset);
+				}
+				else{
+					dprintf("Failed to read physical memory at %p\n", BaseAddress);
+				}
 			}
 		}
+		//TOOD: VACB Array !
+		dprintf("TODO: VACB Array !\n");
 	}else{
 		dprintf("Nothing to extract from SharedCacheMap \n");
 	}
 
-	//Truncate hOuputFile to SizeOfSegment
-	//SetFilePointer(hOuputFile, SizeOfSegment, NULL, FILE_BEGIN);
-	//SetEndOfFile(hOuputFile);
+	//Truncate hOutputFile to SizeOfSegment
+	//SetFilePointer(hOutputFile, SizeOfSegment, NULL, FILE_BEGIN);
+	//SetEndOfFile(hOutputFile);
 Fail:
-	if (hOuputFile != NULL){
+	if (hOutputFile != NULL){
 		dprintf("File saved at %ws\n", fullPath);
-		CloseHandle(hOuputFile);
+		CloseHandle(hOutputFile);
 	}
 }

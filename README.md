@@ -1,11 +1,11 @@
-# dumpfiles
+# Dumpfiles
 Windbg extension to extract file content from Windows Cache Manager.
 All files are store in C:\output\
 
 # How to use ?
-!dumpfiles <fileptr>
+!dumpfiles fileptr
 
-# example :
+# Example :
 <pre>
 0: kd> !ca 0
 ...
